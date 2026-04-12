@@ -3,22 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marketplace Prep v25</title>
+    <title>Marketplace Prep v26</title>
     <script src="coi-serviceworker.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root { --primary: #2563eb; }
         body { font-family: system-ui, sans-serif; background: #f8fafc; padding: 20px; color: #1e293b; text-align: center; }
         .container { max-width: 800px; margin: 0 auto; }
-        .drop-zone { border: 3px dashed #cbd5e1; border-radius: 12px; padding: 60px; background: white; cursor: pointer; margin-bottom: 20px; transition: 0.3s; }
+        .drop-zone { border: 3px dashed #cbd5e1; border-radius: 12px; padding: 60px; background: white; cursor: pointer; margin-bottom: 20px; }
         .drop-zone.drag-over { border-color: var(--primary); background: #eff6ff; }
         .controls { display: flex; gap: 20px; justify-content: center; background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
         .card { background: white; padding: 10px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; min-height: 200px; }
         .card canvas { width: 100%; border-radius: 8px; display: block; }
-        .loading-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; border-radius: 12px; font-weight: bold; }
+        .loading-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; padding: 10px; }
+        .spinner { width: 25px; height: 25px; border: 3px solid #eee; border-top: 3px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .btn-primary { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        .btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -44,22 +45,15 @@
         let removalFn;
 
         try {
-            // Load the module and find the correct function inside it
+            // Updated to 1.5.5 stable
             const lib = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm');
-            
-            // Fix: Check both common export names (default or removeBackground)
             removalFn = lib.removeBackground || lib.default;
-
-            if (typeof removalFn !== 'function') {
-                throw new Error("Library loaded but removal function not found.");
-            }
 
             statusEl.innerText = "Ready";
             statusEl.style.color = "green";
 
             const dropZone = document.getElementById('drop-zone');
             dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); };
-            dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
             dropZone.ondrop = async (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('drag-over');
@@ -69,11 +63,11 @@
             async function processImage(file) {
                 const card = document.createElement('div');
                 card.className = 'card';
-                card.innerHTML = `<div class="loading-overlay"><span>Processing...</span></div><canvas></canvas>`;
+                card.innerHTML = `<div class="loading-overlay"><div class="spinner"></div><span style="font-size:12px">AI Processing...</span></div><canvas></canvas>`;
                 resultsEl.appendChild(card);
                 
                 try {
-                    // Call the removal function correctly
+                    // MUST match library version 1.5.5 exactly
                     const blob = await removalFn(file, {
                         publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.5.5/dist/"
                     });
@@ -97,8 +91,12 @@
                     processed.push({ name: file.name.replace(/\.[^/.]+$/, "") + "_pro.jpg", data: canvas.toDataURL('image/jpeg', 0.9) });
                     dlBtn.disabled = false;
                 } catch (err) {
+                    // This will now show the actual error message in the UI
                     console.error(err);
-                    card.querySelector('.loading-overlay').innerHTML = `<span style="color:red; font-size:12px">Error: Check Console</span>`;
+                    card.querySelector('.loading-overlay').innerHTML = `
+                        <span style="color:red; font-size:10px; font-weight:bold;">Error:</span>
+                        <span style="font-size:9px; color:#555; word-break:break-all;">${err.message || "Unknown Failure"}</span>
+                    `;
                 }
             }
 
@@ -108,14 +106,13 @@
                 const content = await zip.generateAsync({type: "blob"});
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(content);
-                link.download = "marketplace_batch.zip";
+                link.download = "images.zip";
                 link.click();
             };
 
         } catch (e) {
-            statusEl.innerText = "Error Loading AI";
-            statusEl.style.color = "red";
-            console.error("Initialization failed:", e);
+            statusEl.innerText = "Library Error";
+            console.error(e);
         }
     </script>
 </body>
