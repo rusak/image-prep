@@ -3,29 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marketplace Prep v24</title>
+    <title>Marketplace Prep v25</title>
     <script src="coi-serviceworker.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root { --primary: #2563eb; }
         body { font-family: system-ui, sans-serif; background: #f8fafc; padding: 20px; color: #1e293b; text-align: center; }
         .container { max-width: 800px; margin: 0 auto; }
-        .drop-zone { border: 3px dashed #cbd5e1; border-radius: 12px; padding: 60px; background: white; cursor: pointer; margin-bottom: 20px; }
-        .controls { display: flex; gap: 20px; justify-content: center; background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        .drop-zone { border: 3px dashed #cbd5e1; border-radius: 12px; padding: 60px; background: white; cursor: pointer; margin-bottom: 20px; transition: 0.3s; }
+        .drop-zone.drag-over { border-color: var(--primary); background: #eff6ff; }
+        .controls { display: flex; gap: 20px; justify-content: center; background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
-        .card { background: white; padding: 10px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
-        .card canvas { width: 100%; border-radius: 8px; }
+        .card { background: white; padding: 10px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; min-height: 200px; }
+        .card canvas { width: 100%; border-radius: 8px; display: block; }
         .loading-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; border-radius: 12px; font-weight: bold; }
         .btn-primary { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        #debug-log { background: #fee2e2; color: #991b1b; padding: 15px; border-radius: 8px; margin-top: 20px; display: none; text-align: left; font-size: 13px; }
+        .btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Marketplace Prep</h1>
         <p>AI Status: <span id="status" style="font-weight:bold; color: orange;">Connecting...</span></p>
-        
-        <div id="debug-log"></div>
 
         <div class="controls">
             <div><label>BG:</label> <input type="color" id="bgColor" value="#f4f4f4"></div>
@@ -39,47 +38,43 @@
 
     <script type="module">
         const statusEl = document.getElementById('status');
-        const debugEl = document.getElementById('debug-log');
-        
-        function showErr(msg) {
-            debugEl.style.display = 'block';
-            debugEl.innerHTML = `<strong>Error:</strong> ${msg}<br><br><button onclick="location.reload()">Click here to refresh and try again</button>`;
-        }
-
-        // Check if the security guard is actually working
-        if (!window.crossOriginIsolated && window.location.hostname !== 'localhost') {
-            statusEl.innerText = "Security Guard Initializing...";
-            showErr("The security helper (COI) is still setting up. This is normal on the first load.");
-        }
+        const resultsEl = document.getElementById('results');
+        const dlBtn = document.getElementById('dl-zip');
+        const processed = [];
+        let removalFn;
 
         try {
-            // Using a more direct CDN path
-            const module = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm');
-            const imglyBackgroundRemoval = module.default;
+            // Load the module and find the correct function inside it
+            const lib = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm');
+            
+            // Fix: Check both common export names (default or removeBackground)
+            removalFn = lib.removeBackground || lib.default;
+
+            if (typeof removalFn !== 'function') {
+                throw new Error("Library loaded but removal function not found.");
+            }
 
             statusEl.innerText = "Ready";
             statusEl.style.color = "green";
-            debugEl.style.display = 'none';
 
             const dropZone = document.getElementById('drop-zone');
-            const resultsEl = document.getElementById('results');
-            const dlBtn = document.getElementById('dl-zip');
-            const processed = [];
-
             dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); };
+            dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
             dropZone.ondrop = async (e) => {
                 e.preventDefault();
+                dropZone.classList.remove('drag-over');
                 Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(processImage);
             };
 
             async function processImage(file) {
                 const card = document.createElement('div');
                 card.className = 'card';
-                card.innerHTML = `<div class="loading-overlay"><span>AI Processing...</span></div><canvas></canvas>`;
+                card.innerHTML = `<div class="loading-overlay"><span>Processing...</span></div><canvas></canvas>`;
                 resultsEl.appendChild(card);
                 
                 try {
-                    const blob = await imglyBackgroundRemoval(file, {
+                    // Call the removal function correctly
+                    const blob = await removalFn(file, {
                         publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.5.5/dist/"
                     });
                     
@@ -87,11 +82,13 @@
                     const canvas = card.querySelector('canvas');
                     const ctx = canvas.getContext('2d');
                     canvas.width = img.width; canvas.height = img.height;
+                    
                     ctx.fillStyle = document.getElementById('bgColor').value;
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                     
                     const scale = Math.min((canvas.width * 0.9) / img.width, (canvas.height * 0.9) / img.height);
                     const dw = img.width * scale, dh = img.height * scale;
+                    
                     ctx.shadowColor = `rgba(0,0,0,${document.getElementById('shadow').value/100})`;
                     ctx.shadowBlur = 25 * scale;
                     ctx.drawImage(img, (canvas.width - dw)/2, (canvas.height - dh)/2, dw, dh);
@@ -100,7 +97,8 @@
                     processed.push({ name: file.name.replace(/\.[^/.]+$/, "") + "_pro.jpg", data: canvas.toDataURL('image/jpeg', 0.9) });
                     dlBtn.disabled = false;
                 } catch (err) {
-                    showErr("AI Process failed: " + err.message);
+                    console.error(err);
+                    card.querySelector('.loading-overlay').innerHTML = `<span style="color:red; font-size:12px">Error: Check Console</span>`;
                 }
             }
 
@@ -110,12 +108,14 @@
                 const content = await zip.generateAsync({type: "blob"});
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(content);
-                link.download = "images.zip";
+                link.download = "marketplace_batch.zip";
                 link.click();
             };
 
         } catch (e) {
-            showErr("Failed to load AI Engine: " + e.message);
+            statusEl.innerText = "Error Loading AI";
+            statusEl.style.color = "red";
+            console.error("Initialization failed:", e);
         }
     </script>
 </body>
