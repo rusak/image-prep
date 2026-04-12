@@ -3,32 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marketplace Prep v28</title>
+    <title>Marketplace Prep v29</title>
     <script src="coi-serviceworker.js"></script>
     
-    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/dist/index.js"></script>
+    <script 
+        src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/dist/index.js" 
+        crossorigin="anonymous">
+    </script>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"></script>
     
     <style>
         :root { --primary: #2563eb; }
         body { font-family: system-ui, sans-serif; background: #f8fafc; padding: 20px; color: #1e293b; text-align: center; }
         .container { max-width: 800px; margin: 0 auto; }
-        .drop-zone { border: 3px dashed #cbd5e1; border-radius: 12px; padding: 60px; background: white; cursor: pointer; margin-bottom: 20px; transition: 0.3s; }
+        .drop-zone { border: 3px dashed #cbd5e1; border-radius: 12px; padding: 60px; background: white; cursor: pointer; margin-bottom: 20px; }
         .drop-zone.drag-over { border-color: var(--primary); background: #eff6ff; }
         .controls { display: flex; gap: 20px; justify-content: center; background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
-        .card { background: white; padding: 10px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; min-height: 200px; }
-        .card canvas { width: 100%; border-radius: 8px; display: block; }
+        .card { background: white; padding: 10px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; }
         .loading-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; border-radius: 12px; font-weight: bold; }
         .btn-primary { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        #refresh-hint { display: none; margin-top: 10px; color: #64748b; font-size: 13px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Marketplace Prep</h1>
         <p>AI Status: <span id="status" style="font-weight:bold; color: orange;">Connecting...</span></p>
+        
+        <div id="refresh-hint">
+            Stuck? <button onclick="location.reload()" style="cursor:pointer">Click here to Refresh</button>
+        </div>
 
         <div class="controls">
             <div><label>BG:</label> <input type="color" id="bgColor" value="#f4f4f4"></div>
@@ -44,26 +50,31 @@
         const statusEl = document.getElementById('status');
         const resultsEl = document.getElementById('results');
         const dlBtn = document.getElementById('dl-zip');
+        const hint = document.getElementById('refresh-hint');
         const processed = [];
 
-        // Simple check: wait for the library to be available on the window
+        // Show refresh hint after 5 seconds if still connecting
+        setTimeout(() => {
+            if (statusEl.innerText === "Connecting...") hint.style.display = "block";
+        }, 5000);
+
         function initApp() {
+            // Check for the global variable
             if (window.imglyBackgroundRemoval) {
                 statusEl.innerText = "Ready";
                 statusEl.style.color = "green";
+                hint.style.display = "none";
                 setupHandlers();
             } else {
-                setTimeout(initApp, 500); // Check again in half a second
+                setTimeout(initApp, 500);
             }
         }
 
         function setupHandlers() {
             const dropZone = document.getElementById('drop-zone');
             dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); };
-            dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
             dropZone.ondrop = async (e) => {
                 e.preventDefault();
-                dropZone.classList.remove('drag-over');
                 Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(processImage);
             };
         }
@@ -75,7 +86,6 @@
             resultsEl.appendChild(card);
             
             try {
-                // Official 1.5.5 Data Path
                 const config = {
                     publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.5.5/dist/"
                 };
@@ -86,13 +96,11 @@
                 const canvas = card.querySelector('canvas');
                 const ctx = canvas.getContext('2d');
                 canvas.width = img.width; canvas.height = img.height;
-                
                 ctx.fillStyle = document.getElementById('bgColor').value;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
                 const scale = Math.min((canvas.width * 0.9) / img.width, (canvas.height * 0.9) / img.height);
                 const dw = img.width * scale, dh = img.height * scale;
-                
                 ctx.shadowColor = `rgba(0,0,0,${document.getElementById('shadow').value/100})`;
                 ctx.shadowBlur = 25 * scale;
                 ctx.drawImage(img, (canvas.width - dw)/2, (canvas.height - dh)/2, dw, dh);
@@ -101,8 +109,8 @@
                 processed.push({ name: file.name.replace(/\.[^/.]+$/, "") + "_pro.jpg", data: canvas.toDataURL('image/jpeg', 0.9) });
                 dlBtn.disabled = false;
             } catch (err) {
+                card.querySelector('.loading-overlay').innerHTML = `<span style="color:red">Error</span>`;
                 console.error(err);
-                card.querySelector('.loading-overlay').innerHTML = `<span style="color:red; font-size:12px">AI Error: Refresh Page</span>`;
             }
         }
 
@@ -116,7 +124,6 @@
             link.click();
         };
 
-        // Start the check
         initApp();
     </script>
 </body>
