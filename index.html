@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketplace Prep v22</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        :root { --primary: #2563eb; }
+        body { font-family: system-ui, sans-serif; background: #f1f5f9; padding: 20px; color: #1e293b; text-align: center; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .box { background: white; padding: 40px; border-radius: 12px; border: 3px dashed #cbd5e1; cursor: pointer; margin: 20px 0; }
+        .box.over { border-color: var(--primary); background: #eff6ff; }
+        .controls { display: flex; gap: 20px; justify-content: center; margin-bottom: 20px; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; }
+        .card { background: white; padding: 10px; border-radius: 8px; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .card canvas { width: 100%; border-radius: 4px; }
+        .loader { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; border-radius: 8px; }
+        #log { background: #0f172a; color: #10b981; padding: 15px; border-radius: 8px; text-align: left; font-family: monospace; font-size: 11px; margin-top: 30px; max-height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Marketplace Prep</h1>
+        <p>Status: <span id="status" style="color:orange; font-weight:bold;">Loading Engine...</span></p>
+
+        <div class="controls">
+            <div>BG: <input type="color" id="color" value="#f4f4f4"></div>
+            <div>Shadow: <input type="range" id="shd" min="0" max="50" value="20"></div>
+            <button id="zip" disabled style="padding: 5px 15px; cursor:pointer;">Download All</button>
+        </div>
+
+        <div id="drop" class="box"><strong>Drop images here</strong></div>
+        <div id="results"></div>
+        <div id="log">--- Diagnostic Log ---</div>
+    </div>
+
+    <script>
+        const log = (m) => { document.getElementById('log').innerText += `\n> ${m}`; };
+        const status = document.getElementById('status');
+        const processed = [];
+
+        // Try 3 different servers in order
+        const servers = [
+            "https://cdnjs.cloudflare.com/ajax/libs/imgly-background-removal/1.4.5/index.js",
+            "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.js",
+            "https://unpkg.com/@imgly/background-removal@1.4.5/dist/index.js"
+        ];
+
+        let currentIdx = 0;
+
+        function loadEngine() {
+            log(`Trying server ${currentIdx + 1}: ${servers[currentIdx]}`);
+            const s = document.createElement('script');
+            s.src = servers[currentIdx];
+            s.onload = () => {
+                log("Success! Engine loaded.");
+                status.innerText = "Ready";
+                status.style.color = "green";
+            };
+            s.onerror = () => {
+                log("Failed. Trying backup...");
+                currentIdx++;
+                if (currentIdx < servers.length) loadEngine();
+                else {
+                    log("ALL SERVERS BLOCKED. Please try a mobile hotspot.");
+                    status.innerText = "Blocked by Network";
+                    status.style.color = "red";
+                }
+            };
+            document.head.appendChild(s);
+        }
+
+        loadEngine();
+
+        const drop = document.getElementById('drop');
+        drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+        drop.ondragleave = () => drop.classList.remove('over');
+        drop.ondrop = (e) => {
+            e.preventDefault();
+            drop.classList.remove('over');
+            if (!window.imglyBackgroundRemoval) return alert("Engine not ready!");
+            Array.from(e.dataTransfer.files).forEach(process);
+        };
+
+        async function process(file) {
+            log(`Processing ${file.name}...`);
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `<div class="loader">AI Working...</div><canvas></canvas>`;
+            document.getElementById('results').appendChild(card);
+
+            try {
+                // Using a specific data source to avoid path errors
+                const config = { publicPath: "https://cdnjs.cloudflare.com/ajax/libs/imgly-background-removal-data/1.4.5/" };
+                const blob = await imglyBackgroundRemoval.removeBackground(file, config);
+                
+                const img = await createImageBitmap(blob);
+                const canvas = card.querySelector('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width; canvas.height = img.height;
+
+                ctx.fillStyle = document.getElementById('color').value;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const scale = Math.min((canvas.width * 0.9) / img.width, (canvas.height * 0.9) / img.height);
+                const dw = img.width * scale, dh = img.height * scale;
+                
+                ctx.shadowColor = `rgba(0,0,0,${document.getElementById('shd').value/100})`;
+                ctx.shadowBlur = 20 * scale;
+                ctx.drawImage(img, (canvas.width-dw)/2, (canvas.height-dh)/2, dw, dh);
+
+                card.querySelector('.loader').remove();
+                processed.push({ name: file.name.split('.')[0] + "_pro.jpg", data: canvas.toDataURL('image/jpeg', 0.9) });
+                document.getElementById('zip').disabled = false;
+                log("Done!");
+            } catch (e) {
+                log("Error: " + e.message);
+            }
+        }
+
+        document.getElementById('zip').onclick = async () => {
+            const z = new JSZip();
+            processed.forEach(f => z.file(f.name, f.data.split(',')[1], {base64: true}));
+            const c = await z.generateAsync({type: "blob"});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(c); a.download = "images.zip"; a.click();
+        };
+    </script>
+</body>
+</html>
+
