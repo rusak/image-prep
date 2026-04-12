@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marketplace Prep v26</title>
+    <title>Marketplace Prep v27</title>
     <script src="coi-serviceworker.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
@@ -16,7 +16,7 @@
         #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
         .card { background: white; padding: 10px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; min-height: 200px; }
         .card canvas { width: 100%; border-radius: 8px; display: block; }
-        .loading-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; padding: 10px; }
+        .loading-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; }
         .spinner { width: 25px; height: 25px; border: 3px solid #eee; border-top: 3px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .btn-primary { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
@@ -45,9 +45,9 @@
         let removalFn;
 
         try {
-            // Updated to 1.5.5 stable
-            const lib = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm');
-            removalFn = lib.removeBackground || lib.default;
+            // Using version 1.4.5 which has a more stable publicPath structure
+            const lib = await import('https://unpkg.com/@imgly/background-removal@1.4.5/dist/index.js');
+            removalFn = window.imglyBackgroundRemoval.removeBackground;
 
             statusEl.innerText = "Ready";
             statusEl.style.color = "green";
@@ -67,11 +67,12 @@
                 resultsEl.appendChild(card);
                 
                 try {
-                    // MUST match library version 1.5.5 exactly
-                    const blob = await removalFn(file, {
-                        publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.5.5/dist/"
-                    });
+                    // This path is verified to contain the metadata.json file
+                    const config = {
+                        publicPath: "https://unpkg.com/@imgly/background-removal-data@1.4.5/dist/"
+                    };
                     
+                    const blob = await removalFn(file, config);
                     const img = await createImageBitmap(blob);
                     const canvas = card.querySelector('canvas');
                     const ctx = canvas.getContext('2d');
@@ -79,10 +80,8 @@
                     
                     ctx.fillStyle = document.getElementById('bgColor').value;
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    
                     const scale = Math.min((canvas.width * 0.9) / img.width, (canvas.height * 0.9) / img.height);
                     const dw = img.width * scale, dh = img.height * scale;
-                    
                     ctx.shadowColor = `rgba(0,0,0,${document.getElementById('shadow').value/100})`;
                     ctx.shadowBlur = 25 * scale;
                     ctx.drawImage(img, (canvas.width - dw)/2, (canvas.height - dh)/2, dw, dh);
@@ -91,11 +90,10 @@
                     processed.push({ name: file.name.replace(/\.[^/.]+$/, "") + "_pro.jpg", data: canvas.toDataURL('image/jpeg', 0.9) });
                     dlBtn.disabled = false;
                 } catch (err) {
-                    // This will now show the actual error message in the UI
                     console.error(err);
                     card.querySelector('.loading-overlay').innerHTML = `
                         <span style="color:red; font-size:10px; font-weight:bold;">Error:</span>
-                        <span style="font-size:9px; color:#555; word-break:break-all;">${err.message || "Unknown Failure"}</span>
+                        <span style="font-size:9px; color:#555; word-break:break-all;">${err.message}</span>
                     `;
                 }
             }
