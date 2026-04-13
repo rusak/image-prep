@@ -36,7 +36,7 @@ async function processQueue(files, limit = 3) {
   await Promise.all(workers);
 }
 
-/* Bounding box */
+/* Bounding box (FIXED threshold) */
 
 function getBoundingBox(ctx, w, h) {
   const data = ctx.getImageData(0,0,w,h).data;
@@ -45,7 +45,7 @@ function getBoundingBox(ctx, w, h) {
   for(let y=0;y<h;y++){
     for(let x=0;x<w;x++){
       const a=data[(y*w+x)*4+3];
-      if(a>10){
+      if(a > 80){ // 🔥 FIXED
         if(x<l)l=x;
         if(x>r)r=x;
         if(y<t)t=y;
@@ -56,49 +56,66 @@ function getBoundingBox(ctx, w, h) {
   return {top:t,left:l,right:r,bottom:b};
 }
 
-/* 🔥 PERFECT SHADOW (ANCHORED TO SUBJECT) */
+/* 🔥 TRUE FLOOR DETECTION */
 
-function drawShadow(ctx, centerX, subjectBottomY, sw, sh) {
+function getRealBottom(ctx, w, h) {
+  const data = ctx.getImageData(0,0,w,h).data;
 
-  // CONTACT SHADOW
-  ctx.beginPath();
-  ctx.ellipse(centerX, subjectBottomY + 2, sw * 0.22, sh * 0.025, 0, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
-  ctx.fill();
+  for (let y = h - 1; y >= 0; y--) {
+    let count = 0;
 
-  // SOFT SHADOW
-  const gradient = ctx.createRadialGradient(
-    centerX, subjectBottomY + 4, 1,
-    centerX, subjectBottomY + 4, sw * 0.35
-  );
+    for (let x = 0; x < w; x++) {
+      const alpha = data[(y*w + x)*4 + 3];
+      if (alpha > 100) count++;
+    }
 
-  gradient.addColorStop(0, "rgba(0,0,0,0.25)");
-  gradient.addColorStop(0.5, "rgba(0,0,0,0.12)");
-  gradient.addColorStop(1, "rgba(0,0,0,0)");
-
-  ctx.fillStyle = gradient;
-
-  ctx.beginPath();
-  ctx.ellipse(centerX, subjectBottomY + 4, sw * 0.35, sh * 0.06, 0, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-/* Enhancement */
-
-function enhance(ctx,w,h){
-  const d=ctx.getImageData(0,0,w,h);
-  const data=d.data;
-  const s=enhanceInput.value/100;
-
-  for(let i=0;i<data.length;i+=4){
-    data[i]*=1+0.1*s;
-    data[i+1]*=1+0.1*s;
-    data[i+2]*=1+0.1*s;
+    if (count > w * 0.1) {
+      return y;
+    }
   }
-  ctx.putImageData(d,0,0);
+
+  return h;
 }
 
-/* Wrinkles */
+/* 🔥 SHADOW */
+
+function drawShadow(ctx, cx, y, sw, sh) {
+
+  // contact
+  ctx.beginPath();
+  ctx.ellipse(cx, y + 1, sw * 0.22, sh * 0.025, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fill();
+
+  // soft
+  const g = ctx.createRadialGradient(cx, y + 2, 1, cx, y + 2, sw * 0.35);
+  g.addColorStop(0, "rgba(0,0,0,0.25)");
+  g.addColorStop(0.5, "rgba(0,0,0,0.12)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(cx, y + 2, sw * 0.35, sh * 0.06, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/* 🔥 SUBJECT-ONLY ENHANCEMENT */
+
+function enhanceSubject(ctx, w, h) {
+  const img = ctx.getImageData(0,0,w,h);
+  const d = img.data;
+  const s = enhanceInput.value / 100;
+
+  for(let i=0;i<d.length;i+=4){
+    if(d[i+3] > 50){ // only subject pixels
+      d[i] *= 1 + 0.1*s;
+      d[i+1] *= 1 + 0.1*s;
+      d[i+2] *= 1 + 0.1*s;
+    }
+  }
+
+  ctx.putImageData(img,0,0);
+}
 
 function wrinkle(ctx,w,h){
   const d=ctx.getImageData(0,0,w,h);
@@ -106,10 +123,12 @@ function wrinkle(ctx,w,h){
   const s=wrinkleInput.value/100;
 
   for(let i=0;i<data.length;i+=4){
-    const avg=(data[i]+data[i+1]+data[i+2])/3;
-    data[i]+= (data[i]-avg)*s;
-    data[i+1]+= (data[i+1]-avg)*s;
-    data[i+2]+= (data[i+2]-avg)*s;
+    if(data[i+3] > 50){
+      const avg=(data[i]+data[i+1]+data[i+2])/3;
+      data[i]+= (data[i]-avg)*s;
+      data[i+1]+= (data[i+1]-avg)*s;
+      data[i+2]+= (data[i+2]-avg)*s;
+    }
   }
   ctx.putImageData(d,0,0);
 }
@@ -132,9 +151,10 @@ async function processImage(file){
   tctx.drawImage(img,0,0);
 
   const box=getBoundingBox(tctx,temp.width,temp.height);
+  const realBottom=getRealBottom(tctx,temp.width,temp.height);
 
   const sw=box.right-box.left;
-  const sh=box.bottom-box.top;
+  const sh=realBottom-box.top;
 
   const pad=sw*0.05;
 
@@ -144,22 +164,19 @@ async function processImage(file){
   canvas.width=sw+pad*2;
   canvas.height=sh+pad*2;
 
-  // background
-  ctx.fillStyle = bgMode.value==="white" ? "#fff" : "#f5f5f5";
+  // background (FIXED)
+  ctx.fillStyle = bgMode.value==="white" ? "#ffffff" : "#f2f2f2";
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  const centerX = canvas.width / 2;
+  const cx = canvas.width/2;
   const subjectBottomY = pad + sh;
 
-  // 🔥 CORRECT SHADOW POSITION
-  drawShadow(ctx, centerX, subjectBottomY, sw, sh);
+  drawShadow(ctx, cx, subjectBottomY, sw, sh);
 
-  // subject
-  ctx.drawImage(temp,box.left,box.top,sw,sh,pad,pad,sw,sh);
+  ctx.drawImage(temp, box.left, box.top, sw, sh, pad, pad, sw, sh);
 
-  // enhance
-  enhance(ctx,canvas.width,canvas.height);
-  wrinkle(ctx,canvas.width,canvas.height);
+  enhanceSubject(ctx, canvas.width, canvas.height);
+  wrinkle(ctx, canvas.width, canvas.height);
 
   card.innerHTML="";
   card.appendChild(canvas);
