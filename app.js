@@ -56,28 +56,35 @@ function getBoundingBox(ctx, w, h) {
   return {top:t,left:l,right:r,bottom:b};
 }
 
-/* Better Shadow (FIXED) */
+/* 🔥 FIXED SHADOW (Contact + Soft) */
 
-function drawShadow(ctx, canvasWidth, canvasHeight, subjectWidth, subjectHeight, pad) {
-  const centerX = canvasWidth / 2;
-  const y = canvasHeight - pad * 0.6;
+function drawShadow(ctx, cw, ch, sw, sh, pad) {
+  const centerX = cw / 2;
 
-  const radiusX = subjectWidth * 0.35;
-  const radiusY = subjectHeight * 0.06;
+  // 🔹 CONTACT SHADOW (tight, dark, right under object)
+  const contactY = ch - pad * 0.25;
+
+  ctx.beginPath();
+  ctx.ellipse(centerX, contactY, sw * 0.25, sh * 0.03, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fill();
+
+  // 🔹 SOFT SHADOW (spread + fade)
+  const softY = ch - pad * 0.15;
 
   const gradient = ctx.createRadialGradient(
-    centerX, y, radiusY * 0.2,
-    centerX, y, radiusX
+    centerX, softY, sh * 0.02,
+    centerX, softY, sw * 0.35
   );
 
   gradient.addColorStop(0, "rgba(0,0,0,0.25)");
-  gradient.addColorStop(0.4, "rgba(0,0,0,0.15)");
+  gradient.addColorStop(0.5, "rgba(0,0,0,0.12)");
   gradient.addColorStop(1, "rgba(0,0,0,0)");
 
   ctx.fillStyle = gradient;
 
   ctx.beginPath();
-  ctx.ellipse(centerX, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+  ctx.ellipse(centerX, softY, sw * 0.35, sh * 0.07, 0, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -146,7 +153,7 @@ async function processImage(file){
   ctx.fillStyle = bgMode.value==="white" ? "#fff" : "#f5f5f5";
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  // 🔥 NEW SHADOW (FIXED)
+  // 🔥 NEW SHADOW
   drawShadow(ctx, canvas.width, canvas.height, sw, sh, pad);
 
   // subject
@@ -167,7 +174,7 @@ async function processImage(file){
 
   previewModal.onclick=()=>previewModal.style.display="none";
 
-  // download button
+  // download
   const btn=document.createElement("button");
   btn.textContent="Download";
   btn.onclick=()=>{
@@ -206,3 +213,4 @@ document.getElementById("downloadAll").onclick=async()=>{
   a.download="images.zip";
   a.click();
 };
+
