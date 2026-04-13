@@ -2,29 +2,40 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Marketplace Image Prep</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
   <div id="dropzone">
-    <h2>Drag & Drop Clothing Images</h2>
+    <h2>Drag & Drop or Tap to Upload</h2>
+    <input type="file" id="fileInput" multiple accept="image/*" hidden />
   </div>
 
   <div id="controls">
-    <label>
-      Background Tone:
-      <input type="range" id="bgTone" min="230" max="255" value="245">
-    </label>
 
     <label>
-      Shadow Intensity:
-      <input type="range" id="shadow" min="5" max="80" value="25">
+      Background:
+      <select id="bgMode">
+        <option value="neutral">Neutral</option>
+        <option value="white">Pure White</option>
+      </select>
     </label>
 
     <label>
       Enhancement:
       <input type="range" id="enhance" min="0" max="100" value="60">
+    </label>
+
+    <label>
+      Wrinkle Boost:
+      <input type="range" id="wrinkle" min="0" max="100" value="40">
+    </label>
+
+    <label>
+      Cloud Mode:
+      <input type="checkbox" id="cloudMode">
     </label>
 
     <button id="downloadAll">Download All</button>

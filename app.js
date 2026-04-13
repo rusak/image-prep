@@ -1,38 +1,34 @@
 import { removeBackground } from "https://cdn.jsdelivr.net/npm/@imgly/background-removal/+esm";
 
 const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
 const grid = document.getElementById("grid");
-const downloadAllBtn = document.getElementById("downloadAll");
 
-const bgToneInput = document.getElementById("bgTone");
-const shadowInput = document.getElementById("shadow");
+const bgMode = document.getElementById("bgMode");
 const enhanceInput = document.getElementById("enhance");
+const wrinkleInput = document.getElementById("wrinkle");
+const cloudMode = document.getElementById("cloudMode");
 
 let processedImages = [];
 
 /* ---------------------------
-   Drag & Drop
+   Mobile + Drag Upload
 --------------------------- */
 
-dropzone.addEventListener("dragover", e => {
+dropzone.onclick = () => fileInput.click();
+
+fileInput.onchange = e => {
+  processQueue([...e.target.files], 3);
+};
+
+dropzone.ondragover = e => e.preventDefault();
+dropzone.ondrop = e => {
   e.preventDefault();
-  dropzone.classList.add("dragover");
-});
-
-dropzone.addEventListener("dragleave", () => {
-  dropzone.classList.remove("dragover");
-});
-
-dropzone.addEventListener("drop", e => {
-  e.preventDefault();
-  dropzone.classList.remove("dragover");
-
-  const files = [...e.dataTransfer.files].filter(f => f.type.startsWith("image/"));
-  processQueue(files, 3);
-});
+  processQueue([...e.dataTransfer.files], 3);
+};
 
 /* ---------------------------
-   Controlled Parallelism
+   Queue (controlled concurrency)
 --------------------------- */
 
 async function processQueue(files, limit = 3) {
@@ -40,8 +36,7 @@ async function processQueue(files, limit = 3) {
 
   const workers = Array.from({ length: limit }, async () => {
     while (queue.length) {
-      const file = queue.shift();
-      await processImage(file);
+      await processImage(queue.shift());
     }
   });
 
@@ -49,7 +44,7 @@ async function processQueue(files, limit = 3) {
 }
 
 /* ---------------------------
-   Bounding Box Detection
+   Bounding Box (CRITICAL)
 --------------------------- */
 
 function getBoundingBox(ctx, width, height) {
@@ -73,10 +68,10 @@ function getBoundingBox(ctx, width, height) {
 }
 
 /* ---------------------------
-   AI Auto Enhancement
+   FULL AI Enhancement (BEST VERSION)
 --------------------------- */
 
-function autoEnhanceImage(ctx, width, height) {
+function autoEnhance(ctx, width, height) {
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
 
@@ -92,22 +87,18 @@ function autoEnhanceImage(ctx, width, height) {
     let g = data[i + 1] / 255;
     let b = data[i + 2] / 255;
 
-    // Gamma
     r = Math.pow(r, gamma);
     g = Math.pow(g, gamma);
     b = Math.pow(b, gamma);
 
-    // Brightness
     r *= brightness;
     g *= brightness;
     b *= brightness;
 
-    // Contrast
     r = (r - 0.5) * contrast + 0.5;
     g = (g - 0.5) * contrast + 0.5;
     b = (b - 0.5) * contrast + 0.5;
 
-    // Saturation
     const gray = (r + g + b) / 3;
     r = gray + (r - gray) * saturation;
     g = gray + (g - gray) * saturation;
@@ -122,17 +113,60 @@ function autoEnhanceImage(ctx, width, height) {
 }
 
 /* ---------------------------
-   Image Processing
+   Wrinkle Enhancement (Local Contrast)
+--------------------------- */
+
+function enhanceDetails(ctx, width, height) {
+  const strength = wrinkleInput.value / 100;
+
+  const img = ctx.getImageData(0, 0, width, height);
+  const d = img.data;
+
+  for (let i = 0; i < d.length; i += 4) {
+    const avg = (d[i] + d[i+1] + d[i+2]) / 3;
+
+    d[i]     += (d[i] - avg) * strength;
+    d[i + 1] += (d[i + 1] - avg) * strength;
+    d[i + 2] += (d[i + 2] - avg) * strength;
+  }
+
+  ctx.putImageData(img, 0, 0);
+}
+
+/* ---------------------------
+   Cloud (optional)
+--------------------------- */
+
+async function cloudProcess(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("https://your-cloud-endpoint.com/process", {
+    method: "POST",
+    body: formData
+  });
+
+  return await res.blob();
+}
+
+/* ---------------------------
+   MAIN PIPELINE (CORRECT)
 --------------------------- */
 
 async function processImage(file) {
-  const card = createCard();
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<div class="loader">Processing...</div>`;
   grid.appendChild(card);
 
   try {
-    const blob = await removeBackground(file);
+    let blob = cloudMode.checked
+      ? await cloudProcess(file)
+      : await removeBackground(file);
+
     const fgImage = await loadImage(blob);
 
+    // temp canvas for bounding box
     const tempCanvas = document.createElement("canvas");
     const tempCtx = tempCanvas.getContext("2d");
 
@@ -155,17 +189,16 @@ async function processImage(file) {
     canvas.height = subjectHeight + padY * 2;
 
     // Background
-    const tone = bgToneInput.value;
-    ctx.fillStyle = `rgb(${tone},${tone},${tone})`;
+    ctx.fillStyle = bgMode.value === "white" ? "#ffffff" : "#f5f5f5";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    // Shadow
+    // Shadow (adaptive)
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.18)";
-    ctx.shadowBlur = subjectHeight * (shadowInput.value / 100);
+    ctx.shadowBlur = subjectHeight * 0.08;
     ctx.shadowOffsetY = subjectHeight * 0.06;
 
     ctx.drawImage(
@@ -182,45 +215,24 @@ async function processImage(file) {
 
     ctx.restore();
 
-    // ✨ AI Enhancement step
-    autoEnhanceImage(ctx, canvas.width, canvas.height);
+    // Enhancements
+    autoEnhance(ctx, canvas.width, canvas.height);
+    enhanceDetails(ctx, canvas.width, canvas.height);
 
-    card.querySelector(".loader").remove();
+    card.innerHTML = "";
     card.appendChild(canvas);
 
     const dataUrl = canvas.toDataURL("image/png");
 
-    const fileName =
-      file.name.replace(/\.[^/.]+$/, "") + "_fb-ready.png";
+    processedImages.push({
+      name: file.name.replace(/\.[^/.]+$/, "") + "_pro.png",
+      dataUrl
+    });
 
-    processedImages.push({ name: fileName, dataUrl });
-
-    const btn = document.createElement("button");
-    btn.textContent = "Download";
-    btn.onclick = () => download(dataUrl, fileName);
-
-    card.appendChild(btn);
-
-  } catch (err) {
-    console.error(err);
-    card.querySelector(".loader").textContent = "Error";
+  } catch (e) {
+    console.error(e);
+    card.innerHTML = "Error";
   }
-}
-
-/* ---------------------------
-   Helpers
---------------------------- */
-
-function createCard() {
-  const div = document.createElement("div");
-  div.className = "card";
-
-  const loader = document.createElement("div");
-  loader.className = "loader";
-  loader.textContent = "Processing...";
-
-  div.appendChild(loader);
-  return div;
 }
 
 function loadImage(src) {
@@ -231,16 +243,8 @@ function loadImage(src) {
   });
 }
 
-function download(dataUrl, filename) {
-  const a = document.createElement("a");
-  a.href = dataUrl;
-  a.download = filename;
-  a.click();
-}
 
-/* ---------------------------
-   ZIP Download
---------------------------- */
+const downloadAllBtn = document.getElementById("downloadAll");
 
 downloadAllBtn.onclick = async () => {
   const zip = new JSZip();
@@ -257,3 +261,4 @@ downloadAllBtn.onclick = async () => {
   a.download = "processed_images.zip";
   a.click();
 };
+
