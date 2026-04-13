@@ -56,25 +56,20 @@ function getBoundingBox(ctx, w, h) {
   return {top:t,left:l,right:r,bottom:b};
 }
 
-/* 🔥 FIXED SHADOW (Contact + Soft) */
+/* 🔥 PERFECT SHADOW (ANCHORED TO SUBJECT) */
 
-function drawShadow(ctx, cw, ch, sw, sh, pad) {
-  const centerX = cw / 2;
+function drawShadow(ctx, centerX, subjectBottomY, sw, sh) {
 
-  // 🔹 CONTACT SHADOW (tight, dark, right under object)
-  const contactY = ch - pad * 0.25;
-
+  // CONTACT SHADOW
   ctx.beginPath();
-  ctx.ellipse(centerX, contactY, sw * 0.25, sh * 0.03, 0, 0, Math.PI * 2);
+  ctx.ellipse(centerX, subjectBottomY + 2, sw * 0.22, sh * 0.025, 0, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   ctx.fill();
 
-  // 🔹 SOFT SHADOW (spread + fade)
-  const softY = ch - pad * 0.15;
-
+  // SOFT SHADOW
   const gradient = ctx.createRadialGradient(
-    centerX, softY, sh * 0.02,
-    centerX, softY, sw * 0.35
+    centerX, subjectBottomY + 4, 1,
+    centerX, subjectBottomY + 4, sw * 0.35
   );
 
   gradient.addColorStop(0, "rgba(0,0,0,0.25)");
@@ -84,7 +79,7 @@ function drawShadow(ctx, cw, ch, sw, sh, pad) {
   ctx.fillStyle = gradient;
 
   ctx.beginPath();
-  ctx.ellipse(centerX, softY, sw * 0.35, sh * 0.07, 0, 0, Math.PI * 2);
+  ctx.ellipse(centerX, subjectBottomY + 4, sw * 0.35, sh * 0.06, 0, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -153,8 +148,11 @@ async function processImage(file){
   ctx.fillStyle = bgMode.value==="white" ? "#fff" : "#f5f5f5";
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  // 🔥 NEW SHADOW
-  drawShadow(ctx, canvas.width, canvas.height, sw, sh, pad);
+  const centerX = canvas.width / 2;
+  const subjectBottomY = pad + sh;
+
+  // 🔥 CORRECT SHADOW POSITION
+  drawShadow(ctx, centerX, subjectBottomY, sw, sh);
 
   // subject
   ctx.drawImage(temp,box.left,box.top,sw,sh,pad,pad,sw,sh);
@@ -166,7 +164,6 @@ async function processImage(file){
   card.innerHTML="";
   card.appendChild(canvas);
 
-  // preview
   canvas.onclick=()=>{
     previewImage.src=canvas.toDataURL();
     previewModal.style.display="flex";
@@ -174,7 +171,6 @@ async function processImage(file){
 
   previewModal.onclick=()=>previewModal.style.display="none";
 
-  // download
   const btn=document.createElement("button");
   btn.textContent="Download";
   btn.onclick=()=>{
