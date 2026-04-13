@@ -1,130 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marketplace Prep v29</title>
-    <script src="coi-serviceworker.js"></script>
-    
-    <script 
-        src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/dist/index.js" 
-        crossorigin="anonymous">
-    </script>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"></script>
-    
-    <style>
-        :root { --primary: #2563eb; }
-        body { font-family: system-ui, sans-serif; background: #f8fafc; padding: 20px; color: #1e293b; text-align: center; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .drop-zone { border: 3px dashed #cbd5e1; border-radius: 12px; padding: 60px; background: white; cursor: pointer; margin-bottom: 20px; }
-        .drop-zone.drag-over { border-color: var(--primary); background: #eff6ff; }
-        .controls { display: flex; gap: 20px; justify-content: center; background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
-        .card { background: white; padding: 10px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; }
-        .loading-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; border-radius: 12px; font-weight: bold; }
-        .btn-primary { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        #refresh-hint { display: none; margin-top: 10px; color: #64748b; font-size: 13px; }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Marketplace Image Prep</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-    <div class="container">
-        <h1>Marketplace Prep</h1>
-        <p>AI Status: <span id="status" style="font-weight:bold; color: orange;">Connecting...</span></p>
-        
-        <div id="refresh-hint">
-            Stuck? <button onclick="location.reload()" style="cursor:pointer">Click here to Refresh</button>
-        </div>
 
-        <div class="controls">
-            <div><label>BG:</label> <input type="color" id="bgColor" value="#f4f4f4"></div>
-            <div><label>Shadow:</label> <input type="range" id="shadow" min="0" max="50" value="20"></div>
-            <button id="dl-zip" class="btn-primary" disabled>Download ZIP</button>
-        </div>
+  <div id="dropzone">
+    <h2>Drag & Drop Clothing Images</h2>
+  </div>
 
-        <div id="drop-zone" class="drop-zone"><p><strong>Drop images here</strong></p></div>
-        <div id="results"></div>
-    </div>
+  <div id="controls">
+    <label>
+      Background Tone:
+      <input type="range" id="bgTone" min="230" max="255" value="245">
+    </label>
 
-    <script>
-        const statusEl = document.getElementById('status');
-        const resultsEl = document.getElementById('results');
-        const dlBtn = document.getElementById('dl-zip');
-        const hint = document.getElementById('refresh-hint');
-        const processed = [];
+    <label>
+      Shadow Intensity:
+      <input type="range" id="shadow" min="0" max="50" value="20">
+    </label>
 
-        // Show refresh hint after 5 seconds if still connecting
-        setTimeout(() => {
-            if (statusEl.innerText === "Connecting...") hint.style.display = "block";
-        }, 5000);
+    <button id="downloadAll">Download All</button>
+  </div>
 
-        function initApp() {
-            // Check for the global variable
-            if (window.imglyBackgroundRemoval) {
-                statusEl.innerText = "Ready";
-                statusEl.style.color = "green";
-                hint.style.display = "none";
-                setupHandlers();
-            } else {
-                setTimeout(initApp, 500);
-            }
-        }
+  <div id="grid"></div>
 
-        function setupHandlers() {
-            const dropZone = document.getElementById('drop-zone');
-            dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); };
-            dropZone.ondrop = async (e) => {
-                e.preventDefault();
-                Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(processImage);
-            };
-        }
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script type="module" src="app.js"></script>
 
-        async function processImage(file) {
-            const card = document.createElement('div');
-            card.className = 'card';
-            card.innerHTML = `<div class="loading-overlay"><span>Processing...</span></div><canvas></canvas>`;
-            resultsEl.appendChild(card);
-            
-            try {
-                const config = {
-                    publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.5.5/dist/"
-                };
-                
-                const blob = await imglyBackgroundRemoval.removeBackground(file, config);
-                const img = await createImageBitmap(blob);
-                
-                const canvas = card.querySelector('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = img.width; canvas.height = img.height;
-                ctx.fillStyle = document.getElementById('bgColor').value;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                const scale = Math.min((canvas.width * 0.9) / img.width, (canvas.height * 0.9) / img.height);
-                const dw = img.width * scale, dh = img.height * scale;
-                ctx.shadowColor = `rgba(0,0,0,${document.getElementById('shadow').value/100})`;
-                ctx.shadowBlur = 25 * scale;
-                ctx.drawImage(img, (canvas.width - dw)/2, (canvas.height - dh)/2, dw, dh);
-
-                card.querySelector('.loading-overlay').remove();
-                processed.push({ name: file.name.replace(/\.[^/.]+$/, "") + "_pro.jpg", data: canvas.toDataURL('image/jpeg', 0.9) });
-                dlBtn.disabled = false;
-            } catch (err) {
-                card.querySelector('.loading-overlay').innerHTML = `<span style="color:red">Error</span>`;
-                console.error(err);
-            }
-        }
-
-        dlBtn.onclick = async () => {
-            const zip = new JSZip();
-            processed.forEach(f => zip.file(f.name, f.data.split(',')[1], {base64: true}));
-            const content = await zip.generateAsync({type: "blob"});
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(content);
-            link.download = "images.zip";
-            link.click();
-        };
-
-        initApp();
-    </script>
 </body>
 </html>
