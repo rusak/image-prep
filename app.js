@@ -7,19 +7,16 @@ const grid = document.getElementById("grid");
 const bgMode = document.getElementById("bgMode");
 const enhanceInput = document.getElementById("enhance");
 const wrinkleInput = document.getElementById("wrinkle");
-const cloudMode = document.getElementById("cloudMode");
+
+const previewModal = document.getElementById("previewModal");
+const previewImage = document.getElementById("previewImage");
 
 let processedImages = [];
 
-/* ---------------------------
-   Mobile + Drag Upload
---------------------------- */
+/* Upload */
 
 dropzone.onclick = () => fileInput.click();
-
-fileInput.onchange = e => {
-  processQueue([...e.target.files], 3);
-};
+fileInput.onchange = e => processQueue([...e.target.files], 3);
 
 dropzone.ondragover = e => e.preventDefault();
 dropzone.ondrop = e => {
@@ -27,238 +24,163 @@ dropzone.ondrop = e => {
   processQueue([...e.dataTransfer.files], 3);
 };
 
-/* ---------------------------
-   Queue (controlled concurrency)
---------------------------- */
+/* Queue */
 
 async function processQueue(files, limit = 3) {
   const queue = [...files];
-
   const workers = Array.from({ length: limit }, async () => {
     while (queue.length) {
       await processImage(queue.shift());
     }
   });
-
   await Promise.all(workers);
 }
 
-/* ---------------------------
-   Bounding Box (CRITICAL)
---------------------------- */
+/* Bounding box */
 
-function getBoundingBox(ctx, width, height) {
-  const { data } = ctx.getImageData(0, 0, width, height);
+function getBoundingBox(ctx, w, h) {
+  const data = ctx.getImageData(0,0,w,h).data;
+  let t=h,l=w,r=0,b=0;
 
-  let top = height, left = width, right = 0, bottom = 0;
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const alpha = data[(y * width + x) * 4 + 3];
-      if (alpha > 10) {
-        if (x < left) left = x;
-        if (x > right) right = x;
-        if (y < top) top = y;
-        if (y > bottom) bottom = y;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const a=data[(y*w+x)*4+3];
+      if(a>10){
+        if(x<l)l=x;
+        if(x>r)r=x;
+        if(y<t)t=y;
+        if(y>b)b=y;
       }
     }
   }
-
-  return { top, left, right, bottom };
+  return {top:t,left:l,right:r,bottom:b};
 }
 
-/* ---------------------------
-   FULL AI Enhancement (BEST VERSION)
---------------------------- */
+/* Enhancement */
 
-function autoEnhance(ctx, width, height) {
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
+function enhance(ctx,w,h){
+  const d=ctx.getImageData(0,0,w,h);
+  const data=d.data;
+  const s=enhanceInput.value/100;
 
-  const strength = enhanceInput.value / 100;
-
-  const brightness = 1 + 0.1 * strength;
-  const contrast = 1 + 0.2 * strength;
-  const saturation = 1 + 0.15 * strength;
-  const gamma = 1 - 0.1 * strength;
-
-  for (let i = 0; i < data.length; i += 4) {
-    let r = data[i] / 255;
-    let g = data[i + 1] / 255;
-    let b = data[i + 2] / 255;
-
-    r = Math.pow(r, gamma);
-    g = Math.pow(g, gamma);
-    b = Math.pow(b, gamma);
-
-    r *= brightness;
-    g *= brightness;
-    b *= brightness;
-
-    r = (r - 0.5) * contrast + 0.5;
-    g = (g - 0.5) * contrast + 0.5;
-    b = (b - 0.5) * contrast + 0.5;
-
-    const gray = (r + g + b) / 3;
-    r = gray + (r - gray) * saturation;
-    g = gray + (g - gray) * saturation;
-    b = gray + (b - gray) * saturation;
-
-    data[i]     = Math.min(255, Math.max(0, r * 255));
-    data[i + 1] = Math.min(255, Math.max(0, g * 255));
-    data[i + 2] = Math.min(255, Math.max(0, b * 255));
+  for(let i=0;i<data.length;i+=4){
+    data[i]*=1+0.1*s;
+    data[i+1]*=1+0.1*s;
+    data[i+2]*=1+0.1*s;
   }
-
-  ctx.putImageData(imageData, 0, 0);
+  ctx.putImageData(d,0,0);
 }
 
-/* ---------------------------
-   Wrinkle Enhancement (Local Contrast)
---------------------------- */
+/* Wrinkles */
 
-function enhanceDetails(ctx, width, height) {
-  const strength = wrinkleInput.value / 100;
+function wrinkle(ctx,w,h){
+  const d=ctx.getImageData(0,0,w,h);
+  const data=d.data;
+  const s=wrinkleInput.value/100;
 
-  const img = ctx.getImageData(0, 0, width, height);
-  const d = img.data;
-
-  for (let i = 0; i < d.length; i += 4) {
-    const avg = (d[i] + d[i+1] + d[i+2]) / 3;
-
-    d[i]     += (d[i] - avg) * strength;
-    d[i + 1] += (d[i + 1] - avg) * strength;
-    d[i + 2] += (d[i + 2] - avg) * strength;
+  for(let i=0;i<data.length;i+=4){
+    const avg=(data[i]+data[i+1]+data[i+2])/3;
+    data[i]+= (data[i]-avg)*s;
+    data[i+1]+= (data[i+1]-avg)*s;
+    data[i+2]+= (data[i+2]-avg)*s;
   }
-
-  ctx.putImageData(img, 0, 0);
+  ctx.putImageData(d,0,0);
 }
 
-/* ---------------------------
-   Cloud (optional)
---------------------------- */
+/* Process */
 
-async function cloudProcess(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const res = await fetch("https://your-cloud-endpoint.com/process", {
-    method: "POST",
-    body: formData
-  });
-
-  return await res.blob();
-}
-
-/* ---------------------------
-   MAIN PIPELINE (CORRECT)
---------------------------- */
-
-async function processImage(file) {
-  const card = document.createElement("div");
-  card.className = "card";
-  card.innerHTML = `<div class="loader">Processing...</div>`;
+async function processImage(file){
+  const card=document.createElement("div");
+  card.className="card";
+  card.innerHTML="<div class='loader'>Processing...</div>";
   grid.appendChild(card);
 
-  try {
-    let blob = cloudMode.checked
-      ? await cloudProcess(file)
-      : await removeBackground(file);
+  const blob=await removeBackground(file);
+  const img=await load(blob);
 
-    const fgImage = await loadImage(blob);
+  const temp=document.createElement("canvas");
+  const tctx=temp.getContext("2d");
+  temp.width=img.width;
+  temp.height=img.height;
+  tctx.drawImage(img,0,0);
 
-    // temp canvas for bounding box
-    const tempCanvas = document.createElement("canvas");
-    const tempCtx = tempCanvas.getContext("2d");
+  const box=getBoundingBox(tctx,temp.width,temp.height);
 
-    tempCanvas.width = fgImage.width;
-    tempCanvas.height = fgImage.height;
-    tempCtx.drawImage(fgImage, 0, 0);
+  const sw=box.right-box.left;
+  const sh=box.bottom-box.top;
 
-    const box = getBoundingBox(tempCtx, tempCanvas.width, tempCanvas.height);
+  const pad=sw*0.05;
 
-    const subjectWidth = box.right - box.left;
-    const subjectHeight = box.bottom - box.top;
+  const canvas=document.createElement("canvas");
+  const ctx=canvas.getContext("2d");
 
-    const padX = subjectWidth * 0.05;
-    const padY = subjectHeight * 0.05;
+  canvas.width=sw+pad*2;
+  canvas.height=sh+pad*2;
 
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+  // background
+  ctx.fillStyle = bgMode.value==="white" ? "#fff" : "#f5f5f5";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
 
-    canvas.width = subjectWidth + padX * 2;
-    canvas.height = subjectHeight + padY * 2;
+  // SHADOW FIX (draw shadow as ellipse)
+  ctx.beginPath();
+  ctx.ellipse(canvas.width/2, canvas.height-pad/2, sw*0.4, sh*0.08, 0, 0, Math.PI*2);
+  ctx.fillStyle="rgba(0,0,0,0.15)";
+  ctx.fill();
 
-    // Background
-    ctx.fillStyle = bgMode.value === "white" ? "#ffffff" : "#f5f5f5";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // subject
+  ctx.drawImage(temp,box.left,box.top,sw,sh,pad,pad,sw,sh);
 
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+  // enhance AFTER shadow
+  enhance(ctx,canvas.width,canvas.height);
+  wrinkle(ctx,canvas.width,canvas.height);
 
-    // Shadow (adaptive)
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.18)";
-    ctx.shadowBlur = subjectHeight * 0.08;
-    ctx.shadowOffsetY = subjectHeight * 0.06;
+  card.innerHTML="";
+  card.appendChild(canvas);
 
-    ctx.drawImage(
-      tempCanvas,
-      box.left,
-      box.top,
-      subjectWidth,
-      subjectHeight,
-      padX,
-      padY,
-      subjectWidth,
-      subjectHeight
-    );
+  // preview click
+  canvas.onclick=()=>{
+    previewImage.src=canvas.toDataURL();
+    previewModal.style.display="flex";
+  };
 
-    ctx.restore();
+  previewModal.onclick=()=>previewModal.style.display="none";
 
-    // Enhancements
-    autoEnhance(ctx, canvas.width, canvas.height);
-    enhanceDetails(ctx, canvas.width, canvas.height);
+  // download button
+  const btn=document.createElement("button");
+  btn.textContent="Download";
+  btn.onclick=()=>{
+    const a=document.createElement("a");
+    a.href=canvas.toDataURL();
+    a.download=file.name+"_pro.png";
+    a.click();
+  };
 
-    card.innerHTML = "";
-    card.appendChild(canvas);
+  card.appendChild(btn);
 
-    const dataUrl = canvas.toDataURL("image/png");
-
-    processedImages.push({
-      name: file.name.replace(/\.[^/.]+$/, "") + "_pro.png",
-      dataUrl
-    });
-
-  } catch (e) {
-    console.error(e);
-    card.innerHTML = "Error";
-  }
-}
-
-function loadImage(src) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.src = URL.createObjectURL(src);
+  processedImages.push({
+    name:file.name+"_pro.png",
+    dataUrl:canvas.toDataURL()
   });
 }
 
-
-const downloadAllBtn = document.getElementById("downloadAll");
-
-downloadAllBtn.onclick = async () => {
-  const zip = new JSZip();
-
-  processedImages.forEach(img => {
-    const base64 = img.dataUrl.split(",")[1];
-    zip.file(img.name, base64, { base64: true });
+function load(src){
+  return new Promise(res=>{
+    const i=new Image();
+    i.onload=()=>res(i);
+    i.src=URL.createObjectURL(src);
   });
+}
 
-  const blob = await zip.generateAsync({ type: "blob" });
+/* ZIP */
 
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "processed_images.zip";
+document.getElementById("downloadAll").onclick=async()=>{
+  const zip=new JSZip();
+  processedImages.forEach(img=>{
+    zip.file(img.name,img.dataUrl.split(",")[1],{base64:true});
+  });
+  const blob=await zip.generateAsync({type:"blob"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="images.zip";
   a.click();
 };
-
