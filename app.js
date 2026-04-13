@@ -56,6 +56,31 @@ function getBoundingBox(ctx, w, h) {
   return {top:t,left:l,right:r,bottom:b};
 }
 
+/* Better Shadow (FIXED) */
+
+function drawShadow(ctx, canvasWidth, canvasHeight, subjectWidth, subjectHeight, pad) {
+  const centerX = canvasWidth / 2;
+  const y = canvasHeight - pad * 0.6;
+
+  const radiusX = subjectWidth * 0.35;
+  const radiusY = subjectHeight * 0.06;
+
+  const gradient = ctx.createRadialGradient(
+    centerX, y, radiusY * 0.2,
+    centerX, y, radiusX
+  );
+
+  gradient.addColorStop(0, "rgba(0,0,0,0.25)");
+  gradient.addColorStop(0.4, "rgba(0,0,0,0.15)");
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+
+  ctx.fillStyle = gradient;
+
+  ctx.beginPath();
+  ctx.ellipse(centerX, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 /* Enhancement */
 
 function enhance(ctx,w,h){
@@ -121,23 +146,20 @@ async function processImage(file){
   ctx.fillStyle = bgMode.value==="white" ? "#fff" : "#f5f5f5";
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  // SHADOW FIX (draw shadow as ellipse)
-  ctx.beginPath();
-  ctx.ellipse(canvas.width/2, canvas.height-pad/2, sw*0.4, sh*0.08, 0, 0, Math.PI*2);
-  ctx.fillStyle="rgba(0,0,0,0.15)";
-  ctx.fill();
+  // 🔥 NEW SHADOW (FIXED)
+  drawShadow(ctx, canvas.width, canvas.height, sw, sh, pad);
 
   // subject
   ctx.drawImage(temp,box.left,box.top,sw,sh,pad,pad,sw,sh);
 
-  // enhance AFTER shadow
+  // enhance
   enhance(ctx,canvas.width,canvas.height);
   wrinkle(ctx,canvas.width,canvas.height);
 
   card.innerHTML="";
   card.appendChild(canvas);
 
-  // preview click
+  // preview
   canvas.onclick=()=>{
     previewImage.src=canvas.toDataURL();
     previewModal.style.display="flex";
