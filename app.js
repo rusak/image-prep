@@ -6,6 +6,7 @@ const downloadAllBtn = document.getElementById("downloadAll");
 
 const bgToneInput = document.getElementById("bgTone");
 const shadowInput = document.getElementById("shadow");
+const enhanceInput = document.getElementById("enhance");
 
 let processedImages = [];
 
@@ -27,72 +28,173 @@ dropzone.addEventListener("drop", e => {
   dropzone.classList.remove("dragover");
 
   const files = [...e.dataTransfer.files].filter(f => f.type.startsWith("image/"));
-  handleFiles(files);
+  processQueue(files, 3);
 });
 
 /* ---------------------------
-   Main Handler
+   Controlled Parallelism
 --------------------------- */
 
-async function handleFiles(files) {
-  const promises = files.map(file => processImage(file));
-  await Promise.all(promises);
+async function processQueue(files, limit = 3) {
+  const queue = [...files];
+
+  const workers = Array.from({ length: limit }, async () => {
+    while (queue.length) {
+      const file = queue.shift();
+      await processImage(file);
+    }
+  });
+
+  await Promise.all(workers);
 }
 
 /* ---------------------------
-   Image Processing Pipeline
+   Bounding Box Detection
+--------------------------- */
+
+function getBoundingBox(ctx, width, height) {
+  const { data } = ctx.getImageData(0, 0, width, height);
+
+  let top = height, left = width, right = 0, bottom = 0;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha > 10) {
+        if (x < left) left = x;
+        if (x > right) right = x;
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+      }
+    }
+  }
+
+  return { top, left, right, bottom };
+}
+
+/* ---------------------------
+   AI Auto Enhancement
+--------------------------- */
+
+function autoEnhanceImage(ctx, width, height) {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  const strength = enhanceInput.value / 100;
+
+  const brightness = 1 + 0.1 * strength;
+  const contrast = 1 + 0.2 * strength;
+  const saturation = 1 + 0.15 * strength;
+  const gamma = 1 - 0.1 * strength;
+
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i] / 255;
+    let g = data[i + 1] / 255;
+    let b = data[i + 2] / 255;
+
+    // Gamma
+    r = Math.pow(r, gamma);
+    g = Math.pow(g, gamma);
+    b = Math.pow(b, gamma);
+
+    // Brightness
+    r *= brightness;
+    g *= brightness;
+    b *= brightness;
+
+    // Contrast
+    r = (r - 0.5) * contrast + 0.5;
+    g = (g - 0.5) * contrast + 0.5;
+    b = (b - 0.5) * contrast + 0.5;
+
+    // Saturation
+    const gray = (r + g + b) / 3;
+    r = gray + (r - gray) * saturation;
+    g = gray + (g - gray) * saturation;
+    b = gray + (b - gray) * saturation;
+
+    data[i]     = Math.min(255, Math.max(0, r * 255));
+    data[i + 1] = Math.min(255, Math.max(0, g * 255));
+    data[i + 2] = Math.min(255, Math.max(0, b * 255));
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
+/* ---------------------------
+   Image Processing
 --------------------------- */
 
 async function processImage(file) {
-  const card = createCard(file.name);
+  const card = createCard();
   grid.appendChild(card);
 
   try {
-    const img = await loadImage(file);
-
-    // Step 1: Remove Background
     const blob = await removeBackground(file);
     const fgImage = await loadImage(blob);
 
-    // Step 2: Canvas setup
-    const paddingRatio = 0.05;
-    const padX = img.width * paddingRatio;
-    const padY = img.height * paddingRatio;
+    const tempCanvas = document.createElement("canvas");
+    const tempCtx = tempCanvas.getContext("2d");
+
+    tempCanvas.width = fgImage.width;
+    tempCanvas.height = fgImage.height;
+    tempCtx.drawImage(fgImage, 0, 0);
+
+    const box = getBoundingBox(tempCtx, tempCanvas.width, tempCanvas.height);
+
+    const subjectWidth = box.right - box.left;
+    const subjectHeight = box.bottom - box.top;
+
+    const padX = subjectWidth * 0.05;
+    const padY = subjectHeight * 0.05;
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    canvas.width = img.width + padX * 2;
-    canvas.height = img.height + padY * 2;
+    canvas.width = subjectWidth + padX * 2;
+    canvas.height = subjectHeight + padY * 2;
 
-    // Step 3: Background
+    // Background
     const tone = bgToneInput.value;
     ctx.fillStyle = `rgb(${tone},${tone},${tone})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Step 4: Shadow
-    ctx.shadowColor = "rgba(0,0,0,0.2)";
-    ctx.shadowBlur = parseInt(shadowInput.value);
-    ctx.shadowOffsetY = 10;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
-    // Step 5: Draw subject
-    ctx.drawImage(fgImage, padX, padY, img.width, img.height);
+    // Shadow
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.18)";
+    ctx.shadowBlur = subjectHeight * (shadowInput.value / 100);
+    ctx.shadowOffsetY = subjectHeight * 0.06;
 
-    // Reset shadow
-    ctx.shadowColor = "transparent";
+    ctx.drawImage(
+      tempCanvas,
+      box.left,
+      box.top,
+      subjectWidth,
+      subjectHeight,
+      padX,
+      padY,
+      subjectWidth,
+      subjectHeight
+    );
 
-    // Attach canvas
+    ctx.restore();
+
+    // ✨ AI Enhancement step
+    autoEnhanceImage(ctx, canvas.width, canvas.height);
+
     card.querySelector(".loader").remove();
     card.appendChild(canvas);
 
-    // Export
-    const dataUrl = canvas.toDataURL("image/png", 1.0);
+    const dataUrl = canvas.toDataURL("image/png");
 
-    const fileName = file.name.replace(/\.[^/.]+$/, "") + "_processed.png";
+    const fileName =
+      file.name.replace(/\.[^/.]+$/, "") + "_fb-ready.png";
 
     processedImages.push({ name: fileName, dataUrl });
 
-    // Download button
     const btn = document.createElement("button");
     btn.textContent = "Download";
     btn.onclick = () => download(dataUrl, fileName);
@@ -109,7 +211,7 @@ async function processImage(file) {
    Helpers
 --------------------------- */
 
-function createCard(name) {
+function createCard() {
   const div = document.createElement("div");
   div.className = "card";
 
@@ -124,9 +226,8 @@ function createCard(name) {
 function loadImage(src) {
   return new Promise(resolve => {
     const img = new Image();
-    img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
-    img.src = typeof src === "string" ? src : URL.createObjectURL(src);
+    img.src = URL.createObjectURL(src);
   });
 }
 
@@ -138,7 +239,7 @@ function download(dataUrl, filename) {
 }
 
 /* ---------------------------
-   Download All (ZIP)
+   ZIP Download
 --------------------------- */
 
 downloadAllBtn.onclick = async () => {
@@ -156,4 +257,3 @@ downloadAllBtn.onclick = async () => {
   a.download = "processed_images.zip";
   a.click();
 };
-

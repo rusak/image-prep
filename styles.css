@@ -11,11 +11,12 @@ body {
   text-align: center;
   background: white;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 #dropzone.dragover {
   border-color: #007bff;
-  background: #eef6ff;
+  background: linear-gradient(135deg, #eef6ff, #ffffff);
 }
 
 #controls {
@@ -23,6 +24,7 @@ body {
   display: flex;
   gap: 20px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 #grid {
@@ -41,7 +43,11 @@ body {
 
 .card canvas {
   width: 100%;
-  height: auto;
+  transition: transform 0.2s ease;
+}
+
+.card canvas:hover {
+  transform: scale(1.05);
 }
 
 .loader {
@@ -58,3 +64,4 @@ button {
   padding: 6px 10px;
   cursor: pointer;
 }
+
