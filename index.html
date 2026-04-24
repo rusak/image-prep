@@ -4,52 +4,130 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Marketplace Image Prep</title>
-  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface: '#f8fafc',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    #previewModal {
+      display: none;
+    }
+    #previewModal.active {
+      display: flex;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      height: 6px;
+      border-radius: 3px;
+      background: #cbd5e1;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+    }
+  </style>
 </head>
-<body>
+<body class="bg-slate-50 min-h-screen text-slate-700">
 
-  <div id="dropzone">
-    <h2>Drag & Drop or Tap to Upload</h2>
-    <input type="file" id="fileInput" multiple accept="image/*" hidden />
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 px-6 py-4">
+    <div class="max-w-6xl mx-auto flex items-center gap-3">
+      <i data-lucide="image-plus" class="w-6 h-6 text-blue-500"></i>
+      <h1 class="text-lg font-semibold text-slate-800">Marketplace Image Prep</h1>
+    </div>
+  </header>
+
+  <div class="max-w-6xl mx-auto p-6 space-y-6">
+
+    <!-- Dropzone -->
+    <div id="dropzone" class="border-2 border-dashed border-slate-300 rounded-xl p-12 text-center bg-white cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all duration-200">
+      <i data-lucide="upload-cloud" class="w-12 h-12 text-slate-400 mx-auto mb-3"></i>
+      <p class="text-slate-500 text-sm">Drag & Drop or Tap to Upload</p>
+      <input type="file" id="fileInput" multiple accept="image/*" hidden />
+    </div>
+
+    <!-- Controls -->
+    <div id="controls" class="bg-white rounded-xl border border-slate-200 p-5 flex flex-wrap items-center gap-6">
+
+      <div class="flex items-center gap-2">
+        <i data-lucide="palette" class="w-4 h-4 text-slate-400"></i>
+        <label class="text-sm font-medium text-slate-600">Background</label>
+        <select id="bgMode" class="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="neutral">Neutral Gray</option>
+          <option value="white">Pure White</option>
+          <option value="warm">Warm Beige</option>
+          <option value="cool">Cool Gray</option>
+          <option value="cream">Cream</option>
+          <option value="red">Red</option>
+          <option value="custom">Custom</option>
+        </select>
+        <input type="color" id="bgCustomColor" value="#e6e6e6" class="w-8 h-8 rounded-lg border border-slate-200 cursor-pointer p-0.5" />
+      </div>
+
+      <div class="flex items-center gap-2 min-w-[180px]">
+        <i data-lucide="sun" class="w-4 h-4 text-slate-400"></i>
+        <label class="text-sm font-medium text-slate-600 whitespace-nowrap">Enhancement</label>
+        <input type="range" id="enhance" min="0" max="100" value="0" class="flex-1" />
+      </div>
+
+      <div class="flex items-center gap-2 min-w-[180px]">
+        <i data-lucide="waves" class="w-4 h-4 text-slate-400"></i>
+        <label class="text-sm font-medium text-slate-600 whitespace-nowrap">Wrinkle Boost</label>
+        <input type="range" id="wrinkle" min="0" max="100" value="0" class="flex-1" />
+      </div>
+
+      <div class="flex items-center gap-2 min-w-[180px]">
+        <i data-lucide="circle-dot" class="w-4 h-4 text-slate-400"></i>
+        <label class="text-sm font-medium text-slate-600">Shadow</label>
+        <input type="range" id="shadow" min="0" max="100" value="50" class="flex-1" />
+      </div>
+
+      <div class="flex items-center gap-2">
+        <i data-lucide="scan" class="w-4 h-4 text-slate-400"></i>
+        <label class="text-sm font-medium text-slate-600 whitespace-nowrap">Detail Mode</label>
+        <input type="checkbox" id="detailMode" class="w-4 h-4 accent-blue-500" />
+      </div>
+
+      <div class="flex items-center gap-2 ml-auto">
+        <button id="applySettings" hidden class="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-lg transition-colors">
+          <i data-lucide="check" class="w-4 h-4"></i>
+          Apply
+        </button>
+        <button id="downloadAll" class="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors">
+          <i data-lucide="archive" class="w-4 h-4"></i>
+          Download All
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Grid -->
+    <div id="grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+
   </div>
-
-  <div id="controls">
-
-    <label>
-      Background:
-      <select id="bgMode">
-        <option value="neutral">Neutral</option>
-        <option value="white">Pure White</option>
-      </select>
-    </label>
-
-    <label>
-      Enhancement:
-      <input type="range" id="enhance" min="0" max="100" value="60">
-    </label>
-
-    <label>
-      Wrinkle Boost:
-      <input type="range" id="wrinkle" min="0" max="100" value="40">
-    </label>
-
-    <label>
-      Cloud Mode:
-      <input type="checkbox" id="cloudMode">
-    </label>
-
-    <button id="downloadAll">Download All</button>
-  </div>
-
-  <div id="grid"></div>
 
   <!-- Preview Modal -->
-  <div id="previewModal">
-    <img id="previewImage" />
+  <div id="previewModal" class="fixed inset-0 bg-black/80 z-50 justify-center items-center cursor-pointer backdrop-blur-sm">
+    <img id="previewImage" class="max-w-[90%] max-h-[90%] rounded-lg shadow-2xl" />
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script type="module" src="app.js"></script>
+  <script>lucide.createIcons();</script>
 
 </body>
 </html>
